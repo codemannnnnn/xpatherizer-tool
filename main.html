@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>XPath Sandbox (Dark)</title>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+        body {
+            font-family: sans-serif;
+            margin: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 10px;
+            height: 95vh;
+            background: #121212;
+            color: #e0e0e0;
+        }
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 6px;
+        }
+        textarea:focus {
+            outline: 1px solid #4a90e2;
+        }
+        #xmlContainer, #xpathContainer, #resultsContainer {
+            display: flex;
+            flex-direction: column;
+        }
+        h2 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            color: #ffffff;
+        }
+        #xml {
+            height: 40vh;          /* fixed until you resize */
+            resize: vertical;      /* you can drag to change */
+        }
+        #results {
+            border: 1px solid #333;
+            padding: 5px;
+            overflow: auto;
+            white-space: normal;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            background: #181818;
+            color: #e0e0e0;
+            height: 40vh;          /* fixed until you resize */
+            resize: vertical;      /* user-resizable */
+        }
+
+        .small-note {
+            font-size: 11px;
+            color: #aaaaaa;
+            margin-bottom: 4px;
+        }
+        .xpath-block {
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+        .xpath-header {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .xpath-header code {
+            background: #202020;
+            padding: 2px 4px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .match-count {
+            font-size: 12px;
+            margin-bottom: 4px;
+            color: #b0e0ff;
+        }
+        .node-block {
+            margin-left: 8px;
+            margin-bottom: 6px;
+        }
+        details {
+            margin-top: 2px;
+            margin-left: 12px;
+        }
+        summary {
+            cursor: pointer;
+            font-size: 11px;
+            color: #dddddd;
+        }
+        pre {
+            margin: 4px 0 0 0;
+            padding: 4px;
+            background: #111;
+            border-radius: 3px;
+            max-height: 260px;
+            overflow: auto;
+            white-space: pre;
+        }
+
+        /* Syntax highlight styles for XPath */
+        .xp-paren   { color: #64b5f6; }  /* () */
+        .xp-bracket { color: #4dd0e1; }  /* [] */
+        .xp-attr    { color: #ffb74d; }  /* ObjectID, ObjectPK, Name, ActionTypeID */
+        .xp-kw      { color: #ba68c8; }  /* and, or, not, ancestor::, descendant:: */
+        .xp-op      { color: #81c784; }  /* //, @ */
+        .xp-type    { color: #4fc3f7; }  /* Object, Property, Collection, Association */
+
+        /* XPath editor overlay */
+        #xpathEditor {
+            position: relative;
+            height: 40vh;          /* fixed until user resizes */
+            resize: vertical;      /* drag handle */
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        #xpathHighlight {
+            position: absolute;
+            inset: 0;
+            padding: 6px;
+            margin: 0;
+            border: 1px solid #333;
+            background: #1e1e1e;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: auto;
+            pointer-events: none;
+        }
+        #xpath {
+            position: absolute;
+            inset: 0;
+            padding: 6px;
+            margin: 0;
+            border: 1px solid transparent; /* border handled by highlight */
+            background: transparent;
+            color: transparent;            /* hide text, keep caret */
+            caret-color: #e0e0e0;
+            box-sizing: border-box;
+            resize: none;                  /* resizing on wrapper, not textarea */
+            overflow: auto;
+        }
+        #xpath:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="xmlContainer">
+        <h2>XML Input</h2>
+        <textarea id="xml" placeholder="Paste your XML here"></textarea>
+    </div>
+
+    <div id="xpathContainer">
+        <h2>XPath Expressions</h2>
+        <div class="small-note">
+            One XPath per line. Results auto-update as you type.
+        </div>
+
+        <!-- Overlay editor: colored layer + invisible textarea -->
+        <div id="xpathEditor">
+            <pre id="xpathHighlight"></pre>
+            <textarea id="xpath" placeholder="//Object[@ObjectID=2]
+/Object[@ObjectID=13 and ./Property[@ObjectPK=76 and .=12771 and @ActionTypeID=2]]"></textarea>
+        </div>
+
+        <div id="resultsContainer">
+            <h2>Results</h2>
+            <div id="results">(results will appear here)</div>
+        </div>
+    </div>
+
+    <script>
+        const xmlInput = document.getElementById('xml');
+        const xpathInput = document.getElementById('xpath');
+        const xpathHighlight = document.getElementById('xpathHighlight');
+        const resultsDiv = document.getElementById('results');
+
+        let xmlDoc = null;
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        // Basic XPath syntax highlighting for display + editor
+        function highlightXPath(expr) {
+            let s = escapeHtml(expr);
+
+            const patterns = [
+                // attributes (specific first so "ObjectID" doesn't get broken by "Object")
+                { regex: /\bObjectID\b/g,     cls: 'xp-attr' },
+                { regex: /\bObjectPK\b/g,     cls: 'xp-attr' },
+                { regex: /\bName\b/g,         cls: 'xp-attr' },
+                { regex: /\bActionTypeID\b/g, cls: 'xp-attr' },
+
+                // GL Suite node types
+                { regex: /\bObject\b/g,      cls: 'xp-type' },
+                { regex: /\bProperty\b/g,    cls: 'xp-type' },
+                { regex: /\bCollection\b/g,  cls: 'xp-type' },
+                { regex: /\bAssociation\b/g, cls: 'xp-type' },
+
+                // XPath keywords
+                { regex: /\bancestor::/g,   cls: 'xp-kw' },
+                { regex: /\bdescendant::/g, cls: 'xp-kw' },
+                { regex: /\band\b/g,        cls: 'xp-kw' },
+                { regex: /\bor\b/g,         cls: 'xp-kw' },
+                { regex: /\bnot\b/g,        cls: 'xp-kw' },
+
+                // operators
+                { regex: /\/\//g,           cls: 'xp-op' },
+                { regex: /@/g,              cls: 'xp-op' },
+
+                // brackets & parens
+                { regex: /\[/g,             cls: 'xp-bracket' },
+                { regex: /\]/g,             cls: 'xp-bracket' },
+                { regex: /\(/g,             cls: 'xp-paren' },
+                { regex: /\)/g,             cls: 'xp-paren' }
+            ];
+
+            patterns.forEach(({ regex, cls }) => {
+                s = s.replace(regex, m => `<span class="${cls}">${m}</span>`);
+            });
+
+            return s;
+        }
+
+        function updateXPathHighlight() {
+            const text = xpathInput.value;
+            xpathHighlight.innerHTML = highlightXPath(text || '');
+        }
+
+        function parseXML() {
+            const text = xmlInput.value.trim();
+            if (!text) {
+                xmlDoc = null;
+                resultsDiv.textContent = '(No XML loaded)';
+                return;
+            }
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/xml');
+                const parserError = doc.getElementsByTagName('parsererror')[0];
+                if (parserError) {
+                    xmlDoc = null;
+                    resultsDiv.textContent = 'XML Parse Error:\n' + parserError.textContent;
+                } else {
+                    xmlDoc = doc;
+                    runXPaths(); // re-run on new XML
+                }
+            } catch (e) {
+                xmlDoc = null;
+                resultsDiv.textContent = 'XML Parse Exception:\n' + e;
+            }
+        }
+
+        function runXPaths() {
+            const xpText = xpathInput.value;
+            if (!xmlDoc) {
+                resultsDiv.textContent = '(No valid XML to run against)';
+                return;
+            }
+
+            const lines = xpText.split(/\r?\n/).filter(l => l.trim() !== '');
+            if (lines.length === 0) {
+                resultsDiv.textContent = '(No XPath expressions entered)';
+                return;
+            }
+
+            let output = '';
+            for (let i = 0; i < lines.length; i++) {
+                const expr = lines[i].trim();
+                if (!expr) continue;
+
+                output += `<div class="xpath-block">`;
+                output += `<div class="xpath-header">XPath ${i + 1}: <code>${highlightXPath(expr)}</code></div>`;
+
+                try {
+                    const result = xmlDoc.evaluate(expr, xmlDoc, null, XPathResult.ANY_TYPE, null);
+                    output += formatXPathResult(result);
+                } catch (e) {
+                    output += `<div class="match-count">Error: ${escapeHtml(e)}</div>`;
+                }
+
+                output += `</div>`;
+            }
+
+            resultsDiv.innerHTML = output;
+        }
+
+        function formatXPathResult(result) {
+            // Scalar results
+            if (result.resultType === XPathResult.STRING_TYPE) {
+                return `<div class="match-count">Result (string): ${escapeHtml(result.stringValue)}</div>`;
+            }
+            if (result.resultType === XPathResult.NUMBER_TYPE) {
+                return `<div class="match-count">Result (number): ${result.numberValue}</div>`;
+            }
+            if (result.resultType === XPathResult.BOOLEAN_TYPE) {
+                return `<div class="match-count">Result (boolean): ${result.booleanValue}</div>`;
+            }
+
+            // Node set results
+            const nodes = [];
+            let node = result.iterateNext();
+            while (node) {
+                nodes.push(node);
+                node = result.iterateNext();
+            }
+
+            if (nodes.length === 0) {
+                return `<div class="match-count">Matched 0 node(s)</div>`;
+            }
+
+            let html = `<div class="match-count">Matched ${nodes.length} node(s)</div>`;
+            const limitNodes = 50;
+
+            for (let i = 0; i < nodes.length && i < limitNodes; i++) {
+                html += `<div class="node-block">[${i + 1}]<br>${summarizeObjectStyle(nodes[i])}</div>`;
+            }
+            if (nodes.length > limitNodes) {
+                html += `<div class="node-block">... (${nodes.length - limitNodes} more node(s) not shown)</div>`;
+            }
+
+            return html;
+        }
+
+        function summarizeObjectStyle(node) {
+            const maxValLen = 160;   // truncate long property values
+
+            // Special formatting for GL Suite-style Object nodes
+            if (node.nodeType === Node.ELEMENT_NODE && node.nodeName === 'Object') {
+                const objectID = node.getAttribute('ObjectID') || '(no ObjectID)';
+                const objectPK = node.getAttribute('ObjectPK') || '(no ObjectPK)';
+                const nameAttr = node.getAttribute('Name') || '(no Name)';
+
+                let header = `ObjectID=${escapeHtml(objectID)} | ObjectPK=${escapeHtml(objectPK)} | Name=${escapeHtml(nameAttr)}`;
+
+                const children = Array.from(node.children);
+                const properties = children.filter(c => c.nodeName === 'Property');
+                const collections = children.filter(c => c.nodeName === 'Collection');
+
+                // If no children, just the header
+                if (children.length === 0) {
+                    return `${header}<br><span style="font-size:11px;color:#bbbbbb;">(no child elements)</span>`;
+                }
+
+                let detailLines = '';
+
+                // Properties summary
+                if (properties.length > 0) {
+                    detailLines += 'Properties:\n';
+                    properties.forEach(p => {
+                        const pk = p.getAttribute('ObjectPK') || '';
+                        const name = p.getAttribute('Name') || '';
+                        const sortVal = p.getAttribute('SortValue');
+                        const treeVal = p.getAttribute('TreeValue');
+                        let val = (p.textContent || '').trim();
+
+                        if (val.length === 0) val = '(empty)';
+                        if (val.length > maxValLen) {
+                            val = val.slice(0, maxValLen) + '...';
+                        }
+
+                        let line = `  [${pk || '?'}] ${name || '(no Name)'} = ${val}`;
+                        const extras = [];
+                        if (sortVal) extras.push(`Sort=${sortVal}`);
+                        if (treeVal) extras.push(`Tree=${treeVal}`);
+                        if (extras.length) {
+                            line += ` (${extras.join(', ')})`;
+                        }
+                        detailLines += line + '\n';
+                    });
+                    detailLines += '\n';
+                }
+
+                // Collections summary
+                if (collections.length > 0) {
+                    detailLines += 'Collections:\n';
+                    collections.forEach(c => {
+                        const cid = c.getAttribute('CollectionID') || '';
+                        const cname = c.getAttribute('Name') || 'Collection';
+                        const objs = Array.from(c.children).filter(ch => ch.nodeName === 'Object').length;
+                        let line = `  [${cid || '?'}] ${cname} - Objects=${objs}`;
+                        detailLines += line + '\n';
+                    });
+                }
+
+                if (!detailLines.trim()) {
+                    detailLines = '(no Properties or Collections)';
+                }
+
+                return `
+                    ${header}
+                    <details>
+                        <summary>Details (Properties & Collections)</summary>
+                        <pre>${escapeHtml(detailLines)}</pre>
+                    </details>
+                `;
+            }
+
+            // For non-Object elements: short description
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const attrs = Array.from(node.attributes || []).map(a => `${a.name}="${a.value}"`);
+                let text = (node.textContent || '').trim();
+                if (text.length > maxValLen) text = text.slice(0, maxValLen) + '...';
+                let summary = `&lt;${escapeHtml(node.nodeName)}&gt; element`;
+                if (attrs.length) summary += ` [${escapeHtml(attrs.join(', '))}]`;
+                if (text) summary += `\n  Text: ${escapeHtml(text)}`;
+                return summary;
+            }
+
+            if (node.nodeType === Node.ATTRIBUTE_NODE) {
+                return `Attribute @${escapeHtml(node.name)}="${escapeHtml(node.value)}"`;
+            }
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = (node.nodeValue || '').trim();
+                if (!text) return '"(empty text node)"';
+                let t = text;
+                if (t.length > maxValLen) t = t.slice(0, maxValLen) + '...';
+                return `Text: "${escapeHtml(t)}"`;
+            }
+
+            return `NodeType ${node.nodeType} (${escapeHtml(node.nodeName)})`;
+        }
+
+        // Sync scroll between textarea and highlight layer
+        xpathInput.addEventListener('scroll', () => {
+            xpathHighlight.scrollTop = xpathInput.scrollTop;
+            xpathHighlight.scrollLeft = xpathInput.scrollLeft;
+        });
+
+        // Auto-parse XML when it changes (with slight debounce)
+        let xmlTimer;
+        xmlInput.addEventListener('input', () => {
+            clearTimeout(xmlTimer);
+            xmlTimer = setTimeout(parseXML, 300);
+        });
+
+        // Auto-run XPaths when they change (with slight debounce)
+        let xpathTimer;
+        xpathInput.addEventListener('input', () => {
+            updateXPathHighlight();
+            clearTimeout(xpathTimer);
+            xpathTimer = setTimeout(runXPaths, 300);
+        });
+
+        // Initial state
+        resultsDiv.textContent = '(Paste XML on the left, write XPath on the right)';
+        updateXPathHighlight();
+    </script>
+</body>
+</html>
