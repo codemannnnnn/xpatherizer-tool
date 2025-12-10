@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>XPath Sandbox (Dark)</title>
+    <title>XPath Sandbox</title>
     <style>
         :root {
             color-scheme: dark;
@@ -26,22 +26,84 @@
             color: #e0e0e0;
             border: 1px solid #333;
             padding: 6px;
+            resize: vertical;   
+            min-height: 80px;
+            overflow: auto;
         }
         textarea:focus {
             outline: 1px solid #4a90e2;
         }
-        #xmlContainer, #xpathContainer, #resultsContainer {
+
+        #xmlContainer {
             display: flex;
             flex-direction: column;
+            height: 100%;
         }
+        #xpathContainer {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
         h2 {
             margin: 0 0 4px 0;
             font-size: 14px;
             color: #ffffff;
         }
+
+        /* XML input box */
         #xml {
-            height: 40vh;          /* fixed until you resize */
-            resize: vertical;      /* you can drag to change */
+            height: 35vh;         
+        }
+
+        #xpathEditor {
+            position: relative;
+            height: 35vh;         
+            resize: vertical;
+            margin-top: 4px;
+            min-height: 80px;
+        }
+        /* Colored layer */
+        #xpathHighlight {
+            position: absolute;
+            inset: 0;
+            padding: 6px;
+            margin: 0;
+            border: 1px solid #333;
+            background: #1e1e1e;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: auto;
+            pointer-events: none;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+        }
+        /* Actual text input */
+        #xpath {
+            position: absolute;
+            inset: 0;
+            padding: 6px;
+            margin: 0;
+            border: 1px solid transparent;
+            background: transparent;
+            color: transparent;
+            caret-color: #e0e0e0;
+            box-sizing: border-box;
+            resize: none;                 
+            overflow: auto;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+        }
+        #xpath:focus {
+            outline: none;
+        }
+
+        /* Results container & box */
+        #resultsContainer {
+            display: flex;
+            flex-direction: column;
+            margin-top: 8px;
         }
         #results {
             border: 1px solid #333;
@@ -52,8 +114,9 @@
             font-size: 12px;
             background: #181818;
             color: #e0e0e0;
-            height: 40vh;          /* fixed until you resize */
-            resize: vertical;      /* user-resizable */
+            height: 35vh;          
+            resize: vertical;     
+            min-height: 80px;
         }
 
         .small-note {
@@ -105,51 +168,79 @@
         }
 
         /* Syntax highlight styles for XPath */
-        .xp-paren   { color: #64b5f6; }  /* () */
-        .xp-bracket { color: #4dd0e1; }  /* [] */
         .xp-attr    { color: #ffb74d; }  /* ObjectID, ObjectPK, Name, ActionTypeID */
         .xp-kw      { color: #ba68c8; }  /* and, or, not, ancestor::, descendant:: */
         .xp-op      { color: #81c784; }  /* //, @ */
         .xp-type    { color: #4fc3f7; }  /* Object, Property, Collection, Association */
 
-        /* XPath editor overlay */
-        #xpathEditor {
-            position: relative;
-            height: 40vh;          /* fixed until user resizes */
-            resize: vertical;      /* drag handle */
-            overflow: auto;
-            font-family: Consolas, monospace;
-            font-size: 12px;
-            margin-bottom: 8px;
+        /* Depth-based colors for brackets and parens */
+        .xp-bracket-0 { color: #4dd0e1; }
+        .xp-bracket-1 { color: #80cbc4; }
+        .xp-bracket-2 { color: #aed581; }
+        .xp-bracket-3 { color: #ffb74d; }
+        .xp-bracket-4 { color: #e57373; }
+
+        .xp-paren-0 { color: #64b5f6; }
+        .xp-paren-1 { color: #9575cd; }
+        .xp-paren-2 { color: #81c784; }
+        .xp-paren-3 { color: #ffb74d; }
+        .xp-paren-4 { color: #f06292; }
+
+        /* Header row with theme toggle */
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
         }
-        #xpathHighlight {
-            position: absolute;
-            inset: 0;
-            padding: 6px;
-            margin: 0;
-            border: 1px solid #333;
+        #themeToggle {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
             background: #1e1e1e;
-            box-sizing: border-box;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow: auto;
-            pointer-events: none;
+            color: #e0e0e0;
+            cursor: pointer;
         }
-        #xpath {
-            position: absolute;
-            inset: 0;
-            padding: 6px;
-            margin: 0;
-            border: 1px solid transparent; /* border handled by highlight */
-            background: transparent;
-            color: transparent;            /* hide text, keep caret */
-            caret-color: #e0e0e0;
-            box-sizing: border-box;
-            resize: none;                  /* resizing on wrapper, not textarea */
-            overflow: auto;
+        #themeToggle:hover {
+            background: #333;
         }
-        #xpath:focus {
-            outline: none;
+
+        /* LIGHT MODE OVERRIDES */
+        body.light-mode {
+            background: #f5f5f5;
+            color: #111111;
+        }
+        body.light-mode h2 {
+            color: #111111;
+        }
+        body.light-mode textarea {
+            background: #ffffff;
+            color: #111111;
+            border-color: #cccccc;
+        }
+        body.light-mode #results {
+            background: #ffffff;
+            color: #111111;
+            border-color: #cccccc;
+        }
+        body.light-mode #xpathHighlight {
+            background: #ffffff;
+            border-color: #cccccc;
+        }
+        body.light-mode .xpath-header code {
+            background: #eeeeee;
+        }
+        body.light-mode .small-note {
+            color: #555555;
+        }
+        body.light-mode #themeToggle {
+            background: #ffffff;
+            color: #111111;
+            border-color: #999999;
+        }
+        body.light-mode #themeToggle:hover {
+            background: #e0e0e0;
         }
     </style>
 </head>
@@ -160,12 +251,15 @@
     </div>
 
     <div id="xpathContainer">
-        <h2>XPath Expressions</h2>
+        <div class="header-row">
+            <h2>XPath Expressions</h2>
+            <button id="themeToggle" type="button">🌙 Dark</button>
+        </div>
         <div class="small-note">
             One XPath per line. Results auto-update as you type.
         </div>
 
-        <!-- Overlay editor: colored layer + invisible textarea -->
+
         <div id="xpathEditor">
             <pre id="xpathHighlight"></pre>
             <textarea id="xpath" placeholder="//Object[@ObjectID=2]
@@ -183,8 +277,10 @@
         const xpathInput = document.getElementById('xpath');
         const xpathHighlight = document.getElementById('xpathHighlight');
         const resultsDiv = document.getElementById('results');
+        const themeToggle = document.getElementById('themeToggle');
 
         let xmlDoc = null;
+        let isDark = true;
 
         function escapeHtml(str) {
             return String(str)
@@ -194,44 +290,77 @@
                 .replace(/"/g, "&quot;");
         }
 
-        // Basic XPath syntax highlighting for display + editor
+        // Helper: apply depth-based coloring for a pair of chars, ignoring HTML tags
+        function colorPairsByDepth(html, openChar, closeChar, baseClass) {
+            let res = '';
+            let depth = 0;
+            let inTag = false;
+
+            for (let i = 0; i < html.length; i++) {
+                const ch = html[i];
+
+                if (ch === '<') {
+                    inTag = true;
+                    res += ch;
+                    continue;
+                }
+                if (ch === '>' && inTag) {
+                    inTag = false;
+                    res += ch;
+                    continue;
+                }
+                if (inTag) {
+                    res += ch;
+                    continue;
+                }
+
+                if (ch === openChar) {
+                    const d = depth % 5;
+                    res += `<span class="${baseClass}-${d}">${ch}</span>`;
+                    depth++;
+                } else if (ch === closeChar) {
+                    depth = Math.max(depth - 1, 0);
+                    const d = depth % 5;
+                    res += `<span class="${baseClass}-${d}">${ch}</span>`;
+                } else {
+                    res += ch;
+                }
+            }
+            return res;
+        }
+
+        // Syntax highlighting for XPath (used in editor + results header)
         function highlightXPath(expr) {
             let s = escapeHtml(expr);
 
             const patterns = [
-                // attributes (specific first so "ObjectID" doesn't get broken by "Object")
                 { regex: /\bObjectID\b/g,     cls: 'xp-attr' },
                 { regex: /\bObjectPK\b/g,     cls: 'xp-attr' },
                 { regex: /\bName\b/g,         cls: 'xp-attr' },
                 { regex: /\bActionTypeID\b/g, cls: 'xp-attr' },
 
-                // GL Suite node types
                 { regex: /\bObject\b/g,      cls: 'xp-type' },
                 { regex: /\bProperty\b/g,    cls: 'xp-type' },
                 { regex: /\bCollection\b/g,  cls: 'xp-type' },
                 { regex: /\bAssociation\b/g, cls: 'xp-type' },
 
-                // XPath keywords
                 { regex: /\bancestor::/g,   cls: 'xp-kw' },
                 { regex: /\bdescendant::/g, cls: 'xp-kw' },
                 { regex: /\band\b/g,        cls: 'xp-kw' },
                 { regex: /\bor\b/g,         cls: 'xp-kw' },
                 { regex: /\bnot\b/g,        cls: 'xp-kw' },
 
-                // operators
                 { regex: /\/\//g,           cls: 'xp-op' },
-                { regex: /@/g,              cls: 'xp-op' },
-
-                // brackets & parens
-                { regex: /\[/g,             cls: 'xp-bracket' },
-                { regex: /\]/g,             cls: 'xp-bracket' },
-                { regex: /\(/g,             cls: 'xp-paren' },
-                { regex: /\)/g,             cls: 'xp-paren' }
+                { regex: /@/g,              cls: 'xp-op' }
             ];
 
             patterns.forEach(({ regex, cls }) => {
                 s = s.replace(regex, m => `<span class="${cls}">${m}</span>`);
             });
+
+            // Depth-based bracket / paren coloring
+            s = colorPairsByDepth(s, '[', ']', 'xp-bracket');
+            s = colorPairsByDepth(s, '(', ')', 'xp-paren');
 
             return s;
         }
@@ -257,7 +386,7 @@
                     resultsDiv.textContent = 'XML Parse Error:\n' + parserError.textContent;
                 } else {
                     xmlDoc = doc;
-                    runXPaths(); // re-run on new XML
+                    runXPaths();
                 }
             } catch (e) {
                 xmlDoc = null;
@@ -300,7 +429,6 @@
         }
 
         function formatXPathResult(result) {
-            // Scalar results
             if (result.resultType === XPathResult.STRING_TYPE) {
                 return `<div class="match-count">Result (string): ${escapeHtml(result.stringValue)}</div>`;
             }
@@ -311,7 +439,6 @@
                 return `<div class="match-count">Result (boolean): ${result.booleanValue}</div>`;
             }
 
-            // Node set results
             const nodes = [];
             let node = result.iterateNext();
             while (node) {
@@ -337,9 +464,8 @@
         }
 
         function summarizeObjectStyle(node) {
-            const maxValLen = 160;   // truncate long property values
+            const maxValLen = 160;
 
-            // Special formatting for GL Suite-style Object nodes
             if (node.nodeType === Node.ELEMENT_NODE && node.nodeName === 'Object') {
                 const objectID = node.getAttribute('ObjectID') || '(no ObjectID)';
                 const objectPK = node.getAttribute('ObjectPK') || '(no ObjectPK)';
@@ -351,14 +477,12 @@
                 const properties = children.filter(c => c.nodeName === 'Property');
                 const collections = children.filter(c => c.nodeName === 'Collection');
 
-                // If no children, just the header
                 if (children.length === 0) {
                     return `${header}<br><span style="font-size:11px;color:#bbbbbb;">(no child elements)</span>`;
                 }
 
                 let detailLines = '';
 
-                // Properties summary
                 if (properties.length > 0) {
                     detailLines += 'Properties:\n';
                     properties.forEach(p => {
@@ -385,7 +509,6 @@
                     detailLines += '\n';
                 }
 
-                // Collections summary
                 if (collections.length > 0) {
                     detailLines += 'Collections:\n';
                     collections.forEach(c => {
@@ -410,7 +533,6 @@
                 `;
             }
 
-            // For non-Object elements: short description
             if (node.nodeType === Node.ELEMENT_NODE) {
                 const attrs = Array.from(node.attributes || []).map(a => `${a.name}="${a.value}"`);
                 let text = (node.textContent || '').trim();
@@ -442,14 +564,14 @@
             xpathHighlight.scrollLeft = xpathInput.scrollLeft;
         });
 
-        // Auto-parse XML when it changes (with slight debounce)
+        // Auto-parse XML when it changes
         let xmlTimer;
         xmlInput.addEventListener('input', () => {
             clearTimeout(xmlTimer);
             xmlTimer = setTimeout(parseXML, 300);
         });
 
-        // Auto-run XPaths when they change (with slight debounce)
+        // Auto-run XPaths when they change and update colors
         let xpathTimer;
         xpathInput.addEventListener('input', () => {
             updateXPathHighlight();
@@ -457,7 +579,14 @@
             xpathTimer = setTimeout(runXPaths, 300);
         });
 
-        // Initial state
+        // Theme toggle
+        themeToggle.addEventListener('click', () => {
+            isDark = !isDark;
+            document.body.classList.toggle('light-mode', !isDark);
+            themeToggle.textContent = isDark ? '🌙 Dark' : '☀️ Light';
+        });
+
+   
         resultsDiv.textContent = '(Paste XML on the left, write XPath on the right)';
         updateXPathHighlight();
     </script>
